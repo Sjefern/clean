@@ -1,14 +1,13 @@
 {% extends "base.html" %}
 
 {% block content %}
-<h2>Logg inn</h2>
+<h2>Registrer ny bruker</h2>
 <form method="POST">
     {{ form.hidden_tag() }}
+    {{ form.name.label }} {{ form.name }}<br>
     {{ form.username.label }} {{ form.username }}<br>
     {{ form.password.label }} {{ form.password }}<br>
-    {% for error in form.username.errors %}
-        <p style="color:red">{{ error }}</p>
-    {% endfor %}
+    {{ form.address.label }} {{ form.address }}<br>
     {{ form.submit }}
 </form>
 {% endblock %}
