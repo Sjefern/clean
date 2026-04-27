@@ -1,0 +1,11 @@
+body {
+    font-family: Arial, sans-serif;
+}
+
+.logout-container {
+    text-align: right;
+}
+
+.error-message {
+    color: red;
+}

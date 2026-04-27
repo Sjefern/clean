@@ -1,16 +1,23 @@
 from flask_wtf import FlaskForm
-from wtforms import StringField, PasswordField, SubmitField
-from wtforms.validators import InputRequired
+from wtforms import PasswordField, SelectField, StringField, SubmitField
+from wtforms.validators import DataRequired, EqualTo
 
 class RegisterForm(FlaskForm):
-    username = StringField("Brukernavn", validators=[InputRequired()])
-    password = PasswordField("Passord", validators=[InputRequired()])
-    name = StringField("Navn", validators=[InputRequired()])
-    address = StringField("Adresse", validators=[InputRequired()])
+    role = SelectField(
+        "Brukertype",
+        choices=[("vaskeekspert", "Vaskeekspert"), ("bileier", "Bileier")],
+        validators=[DataRequired()],
+    )
+    name = StringField("Navn", validators=[DataRequired()])
+    email = StringField("E-post", validators=[DataRequired()])
+    password = PasswordField("Passord", validators=[DataRequired()])
+    confirm_password = PasswordField(
+        "Bekreft passord",
+        validators=[DataRequired(), EqualTo("password", message="Passordene matcher ikke")],
+    )
     submit = SubmitField("Registrer")
 
 class LoginForm(FlaskForm):
-    username = StringField("Brukernavn", validators=[InputRequired()])
-    password = PasswordField("Passord", validators=[InputRequired()])
+    email = StringField("E-post", validators=[DataRequired()])
+    password = PasswordField("Passord", validators=[DataRequired()])
     submit = SubmitField("Logg inn")
-    
