@@ -4,4 +4,14 @@
 <h2>Hjem - Bileier</h2>
 <p>Velkommen, {{ name }}!</p>
 <p>Du er logget inn som Bileier.</p>
+{% if bestilling_lagret %}
+<p>Bestillingen din er lagret.</p>
+{% endif %}
+
+<h3>Velg vaskepakke</h3>
+<p><a href="{{ url_for('bestilling', valg='pakke_1') }}">Innvendig, utvendig og polering - 700 kr</a></p>
+<p><a href="{{ url_for('bestilling', valg='pakke_2') }}">Innvendig og utvendig - 500 kr</a></p>
+<p><a href="{{ url_for('bestilling', valg='pakke_3') }}">Enkelt behandling - 250 kr</a></p>
+
+<p><a href="{{ url_for('bestilling') }}">Bestill</a></p>
 {% endblock %}
