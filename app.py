@@ -1,5 +1,6 @@
 from flask import Flask, render_template, redirect, session, request, url_for
 import mysql.connector
+from datetime import time
 from forms import RegisterForm, LoginForm, BookingForm
 from db_config import DB_CONFIG_CLEAN, DB_CONFIG_BESTILLINGER
 
@@ -25,6 +26,8 @@ def ensure_bestillinger_table():
             epost VARCHAR(255) NOT NULL,
             biltype VARCHAR(255) NOT NULL,
             tjeneste VARCHAR(255) NOT NULL,
+            bestillingsdato DATE NULL,
+            bestillingstid TIME NULL,
             pris INT NULL,
             merknad TEXT NOT NULL,
             opprettet TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -216,6 +219,16 @@ def bestilling():
     form.tjeneste.choices = behandling_choices
 
     if form.validate_on_submit():
+        if not (time(8, 0) <= form.bestillingstid.data <= time(18, 0)):
+            form.bestillingstid.errors.append("Velg et klokkeslett mellom 08:00 og 18:00")
+            return render_template(
+                "bestilling.html",
+                form=form,
+                car_models=car_models,
+                model_type_map=model_type_map,
+                price_map=price_map,
+            )
+
         valgt_nokkel = form.tjeneste.data
         valgt_tjeneste = behandlinger.get(valgt_nokkel)
         valgt_bil = form.biltype.data.strip()
@@ -254,23 +267,115 @@ def bestilling():
 
         conn = get_conn_bestillinger()
         cur = conn.cursor()
-        cur.execute(
-            """
-            INSERT INTO bestillinger (kunde_navn, pakke, bestillingstype, biltype, pris, obs_notat)
-            VALUES (%s, %s, %s, %s, %s, %s)
-            """,
-            (
-                navn,
-                valgt_tjeneste["navn"],
-                valgt_nokkel,
-                form.biltype.data,
-                valgt_pris,
-                form.merknad.data,
-            ),
-        )
-        conn.commit()
-        cur.close()
-        conn.close()
+        try:
+            # (backwards compatibility)
+            try:
+                cur.execute(
+                    "SELECT COLUMN_NAME FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=%s AND TABLE_NAME=%s",
+                    (DB_CONFIG_BESTILLINGER['database'], 'bestillinger'),
+                )
+                existing_cols = {row[0] for row in cur.fetchall()}
+            except Exception:
+                existing_cols = set()
+
+           
+            if {'navn', 'epost', 'merknad'}.issubset(existing_cols):
+                sql = (
+                    "INSERT INTO bestillinger (navn, epost, biltype, tjeneste, bestillingsdato, bestillingstid, pris, merknad)"
+                    " VALUES (%s, %s, %s, %s, %s, %s, %s, %s)"
+                )
+                params = (
+                    navn,
+                    session.get('email'),
+                    form.biltype.data,
+                    valgt_tjeneste["navn"],
+                    form.bestillingsdato.data,
+                    form.bestillingstid.data,
+                    valgt_pris,
+                    form.merknad.data,
+                )
+                cur.execute(sql, params)
+                conn.commit()
+
+            
+            elif {'kunde_navn', 'obs_notat'}.issubset(existing_cols):
+                fields = ['kunde_navn', 'pakke', 'bestillingstype', 'biltype']
+                vals = [navn, valgt_tjeneste.get('navn'), valgt_nokkel, form.biltype.data]
+                if 'bestillingsdato' in existing_cols:
+                    fields.append('bestillingsdato'); vals.append(form.bestillingsdato.data)
+                if 'bestillingstid' in existing_cols:
+                    fields.append('bestillingstid'); vals.append(form.bestillingstid.data)
+                fields.append('pris'); vals.append(valgt_pris)
+                fields.append('obs_notat'); vals.append(form.merknad.data)
+
+                sql = f"INSERT INTO bestillinger ({','.join(fields)}) VALUES ({','.join(['%s']*len(fields))})"
+                cur.execute(sql, tuple(vals))
+                conn.commit()
+
+            else:
+                
+                common = existing_cols & {'navn', 'epost', 'biltype', 'tjeneste', 'pris', 'merknad', 'bestillingsdato', 'bestillingstid', 'kunde_navn', 'obs_notat', 'bestillingstype', 'pakke'}
+                if not common:
+                    raise RuntimeError('Ukjent bestillinger-skjema i databasen')
+
+                
+                if 'navn' in existing_cols and 'epost' in existing_cols:
+                    fields = ['navn', 'epost', 'biltype', 'tjeneste', 'pris']
+                    vals = [navn, session.get('email'), form.biltype.data, valgt_tjeneste.get('navn'), valgt_pris]
+                    if 'bestillingsdato' in existing_cols:
+                        fields.append('bestillingsdato'); vals.append(form.bestillingsdato.data)
+                    if 'bestillingstid' in existing_cols:
+                        fields.append('bestillingstid'); vals.append(form.bestillingstid.data)
+                    if 'merknad' in existing_cols:
+                        fields.append('merknad'); vals.append(form.merknad.data)
+                else:
+                    
+                    fields = []
+                    vals = []
+                    if 'kunde_navn' in existing_cols:
+                        fields.append('kunde_navn'); vals.append(navn)
+                    if 'pakke' in existing_cols:
+                        fields.append('pakke'); vals.append(valgt_tjeneste.get('navn'))
+                    if 'bestillingstype' in existing_cols:
+                        fields.append('bestillingstype'); vals.append(valgt_nokkel)
+                    if 'biltype' in existing_cols:
+                        fields.append('biltype'); vals.append(form.biltype.data)
+                    if 'bestillingsdato' in existing_cols:
+                        fields.append('bestillingsdato'); vals.append(form.bestillingsdato.data)
+                    if 'bestillingstid' in existing_cols:
+                        fields.append('bestillingstid'); vals.append(form.bestillingstid.data)
+                    if 'pris' in existing_cols:
+                        fields.append('pris'); vals.append(valgt_pris)
+                    if 'obs_notat' in existing_cols:
+                        fields.append('obs_notat'); vals.append(form.merknad.data)
+
+                sql = f"INSERT INTO bestillinger ({','.join(fields)}) VALUES ({','.join(['%s']*len(fields))})"
+                cur.execute(sql, tuple(vals))
+                conn.commit()
+
+        except Exception as e:
+            conn.rollback()
+            try:
+                cur.close()
+                conn.close()
+            except Exception:
+                pass
+            
+            print('Feil ved lagring av bestilling:', e)
+            form.merknad.errors.append('Kunne ikke lagre bestillingen (serverfeil). Prøv igjen senere.')
+            return render_template(
+                'bestilling.html',
+                form=form,
+                car_models=car_models,
+                model_type_map=model_type_map,
+                price_map=price_map,
+            )
+        finally:
+            try:
+                cur.close()
+                conn.close()
+            except Exception:
+                pass
         return redirect(url_for("bileier_home", bestilling_lagret="1"))
 
     return render_template(

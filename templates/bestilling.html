@@ -29,6 +29,22 @@
         {% endfor %}
     </p>
 
+    <p>
+        {{ form.bestillingsdato.label }}<br>
+        {{ form.bestillingsdato(type='date') }}
+        {% for error in form.bestillingsdato.errors %}
+            <span class="error-message">{{ error }}</span>
+        {% endfor %}
+    </p>
+
+    <p>
+        {{ form.bestillingstid.label }}<br>
+        {{ form.bestillingstid(type='time', min='10:00', max='18:00', step='1800') }}
+        {% for error in form.bestillingstid.errors %}
+            <span class="error-message">{{ error }}</span>
+        {% endfor %}
+    </p>
+
     <p id="price_preview">Pris: Velg behandling og bilmodell</p>
 
     <p>
