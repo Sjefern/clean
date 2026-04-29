@@ -6,17 +6,6 @@ from db_config import DB_CONFIG_CLEAN, DB_CONFIG_BESTILLINGER
 app = Flask(__name__)
 app.secret_key = "hemmelig-nok"
 
-BOOKING_OPTIONS = {
-    "pakke_1": {"label": "Pakke 1: innvendig, utvendig og polering", "pris": 700},
-    "pakke_2": {"label": "Pakke 2: innvendig og utvendig", "pris": 500},
-    "pakke_3": {"label": "Pakke 3: enkelt behandling", "pris": 250},
-    "kun_innvendig": {"label": "Kun innvendig", "pris": None},
-    "kun_utvendig": {"label": "Kun utvendig", "pris": None},
-    "utvendig_med_polering": {"label": "Utvendig med polering", "pris": None},
-    "innvendig_utvendig": {"label": "Innvendig og utvendig", "pris": None},
-    "innvendig_utvendig_polering": {"label": "Innvendig, utvendig og polering", "pris": None},
-}
-
 # DB-tilkoblinger for hver database
 def get_conn_clean():
     return mysql.connector.connect(**DB_CONFIG_CLEAN)
@@ -148,57 +137,134 @@ def bestilling():
         return redirect("/login")
 
 
-    # Hent bilmodeller (merke og modell) fra DB
+    # Hent bilmodeller (merke, modell og bilklasse) fra DB
     car_models = []
+    model_type_map = {}
     try:
         conn_models = get_conn_bestillinger()
         cur_models = conn_models.cursor()
         try:
-            cur_models.execute("SELECT merke, modell FROM bil_modeller WHERE merke IS NOT NULL AND modell IS NOT NULL")
+            cur_models.execute(
+                """
+                SELECT merke, modell, type
+                FROM bil_modeller
+                WHERE merke IS NOT NULL AND modell IS NOT NULL
+                """
+            )
             rows = cur_models.fetchall()
-            car_models = [f"{r[0]} {r[1]}" for r in rows]
+            for merke, modell, bilklasse in rows:
+                display_name = f"{merke} {modell}"
+                car_models.append(display_name)
+                if bilklasse:
+                    model_type_map[display_name] = bilklasse.strip().lower()
         except Exception:
             # tabellen eller kolonnene finnes ikke eller ingen tilgjengelige rader
             car_models = []
+            model_type_map = {}
         finally:
             cur_models.close()
             conn_models.close()
     except Exception:
         car_models = []
+        model_type_map = {}
+
+    # Hent behandlinger fra DB (vises som vanlig dropdown uten søk)
+    behandlinger = {}
+    behandling_choices = []
+    try:
+        conn_behandlinger = get_conn_bestillinger()
+        cur_behandlinger = conn_behandlinger.cursor()
+        cur_behandlinger.execute(
+            """
+            SELECT kode, navn, pris
+            FROM behandlinger
+            ORDER BY behandling_id
+            """
+        )
+        rows = cur_behandlinger.fetchall()
+        for kode, navn_behandling, pris in rows:
+            behandlinger[kode] = {"navn": navn_behandling, "pris": pris}
+            behandling_choices.append((kode, navn_behandling))
+        cur_behandlinger.close()
+        conn_behandlinger.close()
+    except Exception:
+        behandlinger = {}
+        behandling_choices = []
+
+    # Hent prisregler per behandling og biltype
+    price_map = {}
+    try:
+        conn_priser = get_conn_bestillinger()
+        cur_priser = conn_priser.cursor()
+        cur_priser.execute(
+            """
+            SELECT behandling_kode, biltype, pris
+            FROM pris_tabell
+            """
+        )
+        rows = cur_priser.fetchall()
+        for kode, biltype, pris in rows:
+            if kode not in price_map:
+                price_map[kode] = {}
+            price_map[kode][biltype.strip().lower()] = pris
+        cur_priser.close()
+        conn_priser.close()
+    except Exception:
+        price_map = {}
 
     form = BookingForm()
-    form.tjeneste.choices = [
-        (
-            key,
-            value["label"] if value["pris"] is None else f'{value["label"]} - {value["pris"]} kr',
-        )
-        for key, value in BOOKING_OPTIONS.items()
-    ]
-
-    forhåndsvalg = request.args.get("valg")
-    if request.method == "GET" and forhåndsvalg in BOOKING_OPTIONS:
-        form.tjeneste.data = forhåndsvalg
+    form.tjeneste.choices = behandling_choices
 
     if form.validate_on_submit():
         valgt_nokkel = form.tjeneste.data
-        valgt_tjeneste = BOOKING_OPTIONS.get(valgt_nokkel)
+        valgt_tjeneste = behandlinger.get(valgt_nokkel)
+        valgt_bil = form.biltype.data.strip()
+        valgt_biltype = model_type_map.get(valgt_bil)
 
         if not valgt_tjeneste:
             form.tjeneste.errors.append("Velg en gyldig behandling")
-            return render_template("bestilling.html", form=form, options=BOOKING_OPTIONS)
+            return render_template(
+                "bestilling.html",
+                form=form,
+                car_models=car_models,
+                model_type_map=model_type_map,
+                price_map=price_map,
+            )
+
+        if not valgt_biltype:
+            form.biltype.errors.append("Velg en bil fra listen for korrekt pris")
+            return render_template(
+                "bestilling.html",
+                form=form,
+                car_models=car_models,
+                model_type_map=model_type_map,
+                price_map=price_map,
+            )
+
+        valgt_pris = price_map.get(valgt_nokkel, {}).get(valgt_biltype)
+        if valgt_pris is None:
+            form.tjeneste.errors.append("Fant ikke pris for valgt behandling og biltype")
+            return render_template(
+                "bestilling.html",
+                form=form,
+                car_models=car_models,
+                model_type_map=model_type_map,
+                price_map=price_map,
+            )
 
         conn = get_conn_bestillinger()
         cur = conn.cursor()
         cur.execute(
             """
-            INSERT INTO bestillinger (kunde_navn, pakke, bestillingstype, biltype, obs_notat)
-            VALUES (%s, %s, %s, %s, %s)
+            INSERT INTO bestillinger (kunde_navn, pakke, bestillingstype, biltype, pris, obs_notat)
+            VALUES (%s, %s, %s, %s, %s, %s)
             """,
             (
                 navn,
-                valgt_tjeneste["label"],
+                valgt_tjeneste["navn"],
                 valgt_nokkel,
                 form.biltype.data,
+                valgt_pris,
                 form.merknad.data,
             ),
         )
@@ -208,7 +274,11 @@ def bestilling():
         return redirect(url_for("bileier_home", bestilling_lagret="1"))
 
     return render_template(
-        "bestilling.html", form=form, options=BOOKING_OPTIONS, car_models=car_models
+        "bestilling.html",
+        form=form,
+        car_models=car_models,
+        model_type_map=model_type_map,
+        price_map=price_map,
     )
 
 

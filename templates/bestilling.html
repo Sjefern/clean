@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+
+{% block content %}
+<h2>Bestilling</h2>
+
+<form method="POST">
+    {{ form.hidden_tag() }}
+
+    <p>
+        {{ form.tjeneste.label }}<br>
+        {{ form.tjeneste() }}
+        {% for error in form.tjeneste.errors %}
+            <span class="error-message">{{ error }}</span>
+        {% endfor %}
+    </p>
+
+    <p>
+        {{ form.biltype.label }}<br>
+        {{ form.biltype(list='bil_models', autocomplete='off') }}
+        <datalist id="bil_models">
+            {% if car_models %}
+                {% for model in car_models %}
+                    <option value="{{ model }}">
+                {% endfor %}
+            {% endif %}
+        </datalist>
+        {% for error in form.biltype.errors %}
+            <span class="error-message">{{ error }}</span>
+        {% endfor %}
+    </p>
+
+    <p id="price_preview">Pris: Velg behandling og bilmodell</p>
+
+    <p>
+        {{ form.merknad.label }}<br>
+        {{ form.merknad(rows=4) }}
+        {% for error in form.merknad.errors %}
+            <span class="error-message">{{ error }}</span>
+        {% endfor %}
+    </p>
+
+    <p>{{ form.submit() }}</p>
+</form>
+
+<p><a href="{{ url_for('bileier_home') }}">Tilbake</a></p>
+
+<script id="bestilling-data" type="application/json">
+    {{ {"modelTypeMap": model_type_map, "priceMap": price_map} | tojson }}
+</script>
+<script src="{{ url_for('static', filename='js/bestilling.js') }}" defer></script>
+{% endblock %}
