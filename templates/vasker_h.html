@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+
+{% block body_class %}expert-body{% endblock %}
+{% block main_class %}expert-main{% endblock %}
+
+{% block content %}
+<h2>Hjem - Vaskeekspert</h2>
+<p>Velkommen, {{ name }}!</p>
+<p>Du er logget inn som Vaskeekspert.</p>
+
+<h3>Dine oppgaver</h3>
+<div class="tasks-menu">
+    <a href="{{ url_for('kunder') }}" class="task-card">
+        <h4>Kunder</h4>
+        <p>Nye bestillinger</p>
+    </a>
+    <a href="{{ url_for('planlagt_oppdrag') }}" class="task-card">
+        <h4>Planlagt oppdrag</h4>
+        <p>Dine aksepterte bestillinger</p>
+    </a>
+</div>
+{% endblock %}

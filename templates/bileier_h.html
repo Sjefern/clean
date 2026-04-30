@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+
+{% block body_class %}owner-body{% endblock %}
+{% block main_class %}owner-main{% endblock %}
+
+{% block content %}
+<h2>Hjem - Bileier</h2>
+<p>Velkommen, {{ name }}!</p>
+<p>Du er logget inn som Bileier.</p>
+{% if bestilling_lagret %}
+<div class="success-message">Bestillingen din er lagret.</div>
+{% endif %}
+
+<h3>Velg vaskepakke</h3>
+<div class="packages-grid">
+    <div class="package-card">
+        <h4>Innvendig, utvendig og polering</h4>
+        <p class="price">700 kr</p>
+        <a href="{{ url_for('bestilling', valg='pakke_1') }}" class="package-btn">Velg</a>
+    </div>
+    <div class="package-card">
+        <h4>Innvendig og utvendig</h4>
+        <p class="price">500 kr</p>
+        <a href="{{ url_for('bestilling', valg='pakke_2') }}" class="package-btn">Velg</a>
+    </div>
+    <div class="package-card">
+        <h4>Enkelt behandling</h4>
+        <p class="price">250 kr</p>
+        <a href="{{ url_for('bestilling', valg='pakke_3') }}" class="package-btn">Velg</a>
+    </div>
+</div>
+
+<p><a href="{{ url_for('bestilling') }}">Eller bestill uten forvalg</a></p>
+
+<h3>Dine bestillinger</h3>
+<p><a href="{{ url_for('mine_bestillinger') }}">Se mine bestillinger</a></p>
+{% endblock %}

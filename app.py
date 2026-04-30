@@ -144,7 +144,7 @@ def vaskeekspert_home():
     rolle = session.get("rolle")
     if not navn or rolle != "vaskeekspert":
         return redirect("/login")
-    return render_template("expert_home.html", name=navn)
+    return render_template("vasker_h.html", name=navn)
 
 
 @app.route("/home/bileier")
@@ -154,7 +154,7 @@ def bileier_home():
     if not navn or rolle != "bileier":
         return redirect("/login")
     bestilling_lagret = request.args.get("bestilling_lagret") == "1"
-    return render_template("owner_home.html", name=navn, bestilling_lagret=bestilling_lagret)
+    return render_template("bileier_h.html", name=navn, bestilling_lagret=bestilling_lagret)
 
 
 # Bileier: Se egne bestillinger

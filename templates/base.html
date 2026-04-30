@@ -1,17 +1,38 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title> Clean Demo</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cleanride</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='style/style.css') }}">
 </head>
-<body>
-    <div class="logout-container">
-        <form action="{{ url_for('logout') }}" method="POST">
-            <button type="submit">Logg ut</button>
-        </form>
-    </div>
-    <h1>Clean Demo</h1>
-    <hr>
-    {% block content %}{% endblock %}
+<body class="{% block body_class %}{% endblock %}">
+    <header class="site-header">
+        <a href="{{ url_for('index') }}" class="brand-link">CLEANRIDE</a>
+        <nav class="nav-links">
+            {% if session.get('rolle') == 'bileier' %}
+            <a href="{{ url_for('bileier_home') }}" class="nav-link">Hjem</a>
+            {% elif session.get('rolle') == 'vaskeekspert' %}
+            <a href="{{ url_for('vaskeekspert_home') }}" class="nav-link">Hjem</a>
+            {% endif %}
+        </nav>
+        <div class="auth-actions">
+            {% if session.get('navn') %}
+            <form action="{{ url_for('logout') }}" method="POST">
+                <button type="submit" class="auth-btn">Logg ut</button>
+            </form>
+            {% else %}
+            <a href="{{ url_for('login') }}" class="auth-btn">Login</a>
+            {% endif %}
+        </div>
+    </header>
+
+    <main class="page-shell {% block main_class %}{% endblock %}">
+        {% block content %}{% endblock %}
+    </main>
+
+    <footer class="site-footer">
+        <p>CLEANRIDE@clean.com</p>
+    </footer>
 </body>
 </html>

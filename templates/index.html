@@ -1,5 +1,37 @@
 {% extends "base.html" %}
 
+{% block body_class %}landing-body{% endblock %}
+{% block main_class %}landing-main{% endblock %}
+
 {% block content %}
-<p><a href="{{ url_for('login') }}">Logg inn</a></p>
+<section class="landing-grid">
+	<article class="info-card left">
+		<h2>Bilvask som faktisk er grundig</h2>
+		<p>
+			Trenger du en ren bil innvendig, utvendig eller polert?
+			Cleanride Follo hjelper deg med effektive tjenester i Nordre Follo.
+			Opprett bruker for aa se ledige tider og priser.
+		</p>
+	</article>
+
+	<article class="logo-card">
+		<div class="logo-wrap">
+			<img src="{{ url_for('static', filename='img/cleanlogo.svg') }}" alt="Cleanride logo">
+		</div>
+		<p class="logo-caption">Kvalitet, presisjon og trygg håntering av ditt kjøretøy.</p>
+	</article>
+
+	<article class="info-card right">
+		<h2>Vil du bli vaskeekspert?</h2>
+		<p>
+			Har du erfaring eller lyst til aa jobbe med bilpleie?
+			Registrer deg som vasker, saa gaar vi gjennom soknaden
+			og tester ferdighetene dine.
+		</p>
+	</article>
+</section>
+
+<section class="landing-cta">
+    <a href="{{ url_for('login') }}" class="cta-btn primary">Se tjenester</a>
+</section>
 {% endblock %}
