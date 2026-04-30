@@ -3,6 +3,7 @@ import mysql.connector
 from datetime import time
 from forms import RegisterForm, LoginForm, BookingForm
 from db_config import DB_CONFIG_CLEAN, DB_CONFIG_BESTILLINGER
+from werkzeug.security import generate_password_hash, check_password_hash
 
 app = Flask(__name__)
 app.secret_key = "hemmelig-nok"
@@ -98,9 +99,10 @@ def register():
             form.email.errors.append("Denne e-posten er allerede registrert")
             return render_template("register.html", form=form)
 
+        hashed_password = generate_password_hash(passord, method='pbkdf2:sha256')
         cur.execute(
             "INSERT INTO brukere (navn, brukernavn, passord, adresse) VALUES (%s, %s, %s, %s)",
-            (navn, email, passord, rolle)
+            (navn, email, hashed_password, rolle)
         )
         conn.commit()
         cur.close()
@@ -120,14 +122,14 @@ def login():
         conn = get_conn_clean()
         cur = conn.cursor()
         cur.execute(
-            "SELECT navn, adresse FROM brukere WHERE brukernavn=%s AND passord=%s",
-            (email, passord)
+            "SELECT navn, adresse, passord FROM brukere WHERE brukernavn=%s",
+            (email,)
         )
         user = cur.fetchone()
         cur.close()
         conn.close()
 
-        if user:
+        if user and check_password_hash(user[2], passord):
             session["navn"] = user[0]
             session["rolle"] = user[1]
             session["email"] = email
