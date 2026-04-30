@@ -8,7 +8,7 @@ from werkzeug.security import generate_password_hash, check_password_hash
 app = Flask(__name__)
 app.secret_key = "hemmelig-nok"
 
-# DB-tilkoblinger for hver database
+# Egen tilkobling per database, siden appen leser og skriver til to ulike skjemaer.
 def get_conn_clean():
     return mysql.connector.connect(**DB_CONFIG_CLEAN)
 
@@ -68,10 +68,12 @@ def ensure_bestillinger_columns():
 # Hovedside
 @app.route("/")
 def index():
+    # Forsiden er bare en enkel inngangsside.
     return render_template("index.html")
 
 
 def redirect_to_role_home(role):
+    # Send brukeren til riktig startside basert på rollen som ble lagret i session.
     if role == "vaskeekspert":
         return redirect("/home/vaskeekspert")
     if role == "bileier":
@@ -83,6 +85,7 @@ def redirect_to_role_home(role):
 def register():
     form = RegisterForm()
     if form.validate_on_submit():
+        # Registrering bruker e-post som innloggingsnavn.
         navn = form.name.data
         email = form.email.data
         passord = form.password.data
@@ -116,6 +119,7 @@ def register():
 def login():
     form = LoginForm()
     if form.validate_on_submit():
+        # Hent brukerdata og verifiser passord før session settes.
         email = form.email.data
         passord = form.password.data
 
@@ -146,6 +150,7 @@ def vaskeekspert_home():
     rolle = session.get("rolle")
     if not navn or rolle != "vaskeekspert":
         return redirect("/login")
+    # Eksperthjemmesiden trenger bare navnet for å vise en personlig velkomst.
     return render_template("vasker_h.html", name=navn)
 
 
@@ -155,6 +160,7 @@ def bileier_home():
     rolle = session.get("rolle")
     if not navn or rolle != "bileier":
         return redirect("/login")
+    # Query-parameteren brukes for å vise en bekreftelse etter vellykket bestilling.
     bestilling_lagret = request.args.get("bestilling_lagret") == "1"
     return render_template("bileier_h.html", name=navn, bestilling_lagret=bestilling_lagret)
 
@@ -170,7 +176,7 @@ def mine_bestillinger():
     try:
         conn = get_conn_bestillinger()
         cur = conn.cursor()
-        # Hent bestillinger for innlogget bileier (basert på kunde_navn)
+        # Hent bestillinger for innlogget bileier. Skjemaet har historisk hatt ulike kolonnenavn.
         cur.execute(
             """
             SELECT bestilling_id, biltype, pakke, pris, status, obs_notat
@@ -212,7 +218,7 @@ def bestilling():
         return redirect("/login")
 
 
-    # Hent bilmodeller (merke, modell og bilklasse) fra DB
+    # Hent bilmodeller og bygg en visningsliste som brukes av autofullføring i skjemaet.
     car_models = []
     model_type_map = {}
     try:
@@ -243,7 +249,7 @@ def bestilling():
         car_models = []
         model_type_map = {}
 
-    # Hent behandlinger fra DB (vises som vanlig dropdown uten søk)
+    # Hent tilgjengelige behandlinger og prisene deres fra databasen.
     behandlinger = {}
     behandling_choices = []
     try:
@@ -266,7 +272,7 @@ def bestilling():
         behandlinger = {}
         behandling_choices = []
 
-    # Hent prisregler per behandling og biltype
+    # Prisene bestemmes av kombinasjonen behandling + biltype.
     price_map = {}
     try:
         conn_priser = get_conn_bestillinger()
@@ -292,6 +298,7 @@ def bestilling():
 
     if form.validate_on_submit():
 
+        # Valider at valgt behandling og bil faktisk finnes i de oppslagsdataene vi nettopp lastet.
         valgt_nokkel = form.tjeneste.data
         valgt_tjeneste = behandlinger.get(valgt_nokkel)
         valgt_bil = form.biltype.data.strip()
@@ -331,7 +338,7 @@ def bestilling():
         conn = get_conn_bestillinger()
         cur = conn.cursor()
         try:
-            # (backwards compatibility)
+            # Sjekk hvilke kolonner som faktisk finnes, slik at vi kan støtte eldre databaser.
             try:
                 cur.execute(
                     "SELECT COLUMN_NAME FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=%s AND TABLE_NAME=%s",
@@ -341,7 +348,7 @@ def bestilling():
             except Exception:
                 existing_cols = set()
 
-           
+            # Nyere skjema bruker navn/epost/merknad.
             if {'navn', 'epost', 'merknad'}.issubset(existing_cols):
                 sql = (
                     "INSERT INTO bestillinger (navn, epost, biltype, tjeneste, bestillingsdato, bestillingstid, pris, merknad, status)"
@@ -361,7 +368,7 @@ def bestilling():
                 cur.execute(sql, params)
                 conn.commit()
 
-            
+            # Eldre skjema bruker kunde_navn og obs_notat.
             elif {'kunde_navn', 'obs_notat'}.issubset(existing_cols):
                 fields = ['kunde_navn', 'pakke', 'bestillingstype', 'biltype']
                 vals = [navn, valgt_tjeneste.get('navn'), valgt_nokkel, form.biltype.data]
@@ -377,12 +384,12 @@ def bestilling():
                 conn.commit()
 
             else:
-                
+                # Hvis skjemaet er blandet eller uventet, bygg INSERT dynamisk fra kolonnene vi kjenner.
                 common = existing_cols & {'navn', 'epost', 'biltype', 'tjeneste', 'pris', 'merknad', 'bestillingsdato', 'bestillingstid', 'kunde_navn', 'obs_notat', 'bestillingstype', 'pakke'}
                 if not common:
                     raise RuntimeError('Ukjent bestillinger-skjema i databasen')
 
-                
+                # Foretrekk nyere kolonner når de finnes, ellers fall tilbake til eldre navn.
                 if 'navn' in existing_cols and 'epost' in existing_cols:
                     fields = ['navn', 'epost', 'biltype', 'tjeneste', 'pris']
                     vals = [navn, session.get('email'), form.biltype.data, valgt_tjeneste.get('navn'), valgt_pris]
@@ -424,7 +431,7 @@ def bestilling():
                 conn.close()
             except Exception:
                 pass
-            
+
             print('Feil ved lagring av bestilling:', e)
             form.merknad.errors.append('Kunne ikke lagre bestillingen (serverfeil). Prøv igjen senere.')
             return render_template(
@@ -461,6 +468,7 @@ def welcome_redirect():
 
 @app.route("/logout", methods=["POST"])
 def logout():
+    # Tøm session helt så neste bruker ikke arver innloggingen.
     session.clear()
     return redirect("/")
 
@@ -476,7 +484,7 @@ def kunder():
     try:
         conn = get_conn_bestillinger()
         cur = conn.cursor()
-        # Hent alle ventende bestillinger
+        # Vis bare bestillinger som fortsatt venter på svar fra vaskeekspert.
         cur.execute(
             """
             SELECT bestilling_id, kunde_navn, biltype, pakke, pris, obs_notat, status
@@ -512,6 +520,7 @@ def accept_bestilling(bestilling_id):
     if not navn or rolle != "vaskeekspert":
         return redirect("/login")
 
+    # Handlingen kommer fra skjemaet som enten sender accept eller reject.
     action = request.form.get("action")  # 'accept' or 'reject'
     if action not in ("accept", "reject"):
         return redirect("/kunder")
@@ -520,6 +529,7 @@ def accept_bestilling(bestilling_id):
         conn = get_conn_bestillinger()
         cur = conn.cursor()
         if action == "accept":
+            # Lås bestillingen til eksperten som tar den.
             cur.execute(
                 """
                 UPDATE bestillinger
@@ -530,6 +540,7 @@ def accept_bestilling(bestilling_id):
                 (navn, bestilling_id)
             )
         else:  # reject
+            # Ved avslag nullstilles eksperten slik at andre ikke ser oppdraget som tatt.
             cur.execute(
                 """
                 UPDATE bestillinger
@@ -559,7 +570,7 @@ def planlagt_oppdrag():
     try:
         conn = get_conn_bestillinger()
         cur = conn.cursor()
-        # Hent alle bestillinger med status 'accepted' for denne eksperten
+        # Her vises bare oppdrag som denne eksperten selv har akseptert.
         cur.execute(
             """
             SELECT bestilling_id, kunde_navn, biltype, pakke, pris, obs_notat
@@ -571,6 +582,7 @@ def planlagt_oppdrag():
         )
         bestillinger = []
         for row in cur.fetchall():
+            # Bygg en enkel dict som er lett å bruke i Jinja-templaten.
             bestillinger.append({
                 'id': row[0],
                 'navn': row[1],
