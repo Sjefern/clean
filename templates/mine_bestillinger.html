@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+
+{% block content %}
+<h2>Mine bestillinger</h2>
+<p>Status på dine bestillinger.</p>
+
+{% if bestillinger %}
+    <table>
+        <tr>
+            <th>Biltype</th>
+            <th>Tjeneste</th>
+            <th>Pris</th>
+            <th>Status</th>
+            <th>Merknad</th>
+        </tr>
+        {% for best in bestillinger %}
+        <tr>
+            <td>{{ best.biltype }}</td>
+            <td>{{ best.tjeneste }}</td>
+            <td>{{ best.pris }} kr</td>
+            <td><strong>{{ best.status }}</strong></td>
+            <td>{{ best.merknad }}</td>
+        </tr>
+        {% endfor %}
+    </table>
+{% else %}
+    <p>Du har ingen bestillinger.</p>
+{% endif %}
+
+<p><a href="{{ url_for('bileier_home') }}">Tilbake til hjem</a></p>
+{% endblock %}

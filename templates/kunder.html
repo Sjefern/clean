@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+
+{% block content %}
+<h2>Kunder - Nye bestillinger</h2>
+<p>Velg bestillinger du ønsker å ta på deg.</p>
+
+{% if bestillinger %}
+    <table>
+        <tr>
+            <th>Kunde</th>
+            <th>Biltype</th>
+            <th>Tjeneste</th>
+            <th>Pris</th>
+            <th>Merknad</th>
+            <th>Handling</th>
+        </tr>
+        {% for best in bestillinger %}
+        <tr>
+            <td>{{ best.navn }}</td>
+            <td>{{ best.biltype }}</td>
+            <td>{{ best.tjeneste }}</td>
+            <td>{{ best.pris }} kr</td>
+            <td>{{ best.merknad }}</td>
+            <td>
+                <div class="action-buttons">
+                    <form method="POST" action="{{ url_for('accept_bestilling', bestilling_id=best.id) }}">
+                        <button type="submit" name="action" value="accept" class="btn-accept">Ja</button>
+                    </form>
+                    <form method="POST" action="{{ url_for('accept_bestilling', bestilling_id=best.id) }}">
+                        <button type="submit" name="action" value="reject" class="btn-reject">Nei</button>
+                    </form>
+                </div>
+            </td>
+        </tr>
+        {% endfor %}
+    </table>
+{% else %}
+    <p>Ingen nye bestillinger.</p>
+{% endif %}
+
+<p><a href="{{ url_for('vaskeekspert_home') }}">Tilbake til hjem</a></p>
+{% endblock %}

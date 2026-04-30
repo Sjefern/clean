@@ -30,6 +30,8 @@ def ensure_bestillinger_table():
             bestillingstid TIME NULL,
             pris INT NULL,
             merknad TEXT NOT NULL,
+            status VARCHAR(50) DEFAULT 'pending',
+            vaskeekspert_email VARCHAR(255) NULL,
             opprettet TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
         """
@@ -37,6 +39,29 @@ def ensure_bestillinger_table():
     conn.commit()
     cur.close()
     conn.close()
+
+
+def ensure_bestillinger_columns():
+    """Ensure status and vaskeekspert_email columns exist for expert acceptance workflow."""
+    conn = get_conn_bestillinger()
+    cur = conn.cursor()
+    try:
+        cur.execute(
+            "ALTER TABLE bestillinger ADD COLUMN IF NOT EXISTS status VARCHAR(50) DEFAULT 'pending'"
+        )
+        cur.execute(
+            "ALTER TABLE bestillinger ADD COLUMN IF NOT EXISTS vaskeekspert_email VARCHAR(255) NULL"
+        )
+        # Backfill existing rows so old bookings become visible as pending.
+        cur.execute(
+            "UPDATE bestillinger SET status = 'pending' WHERE status IS NULL OR status = ''"
+        )
+        conn.commit()
+    except Exception as e:
+        print(f"Note: Could not add columns (may already exist): {e}")
+    finally:
+        cur.close()
+        conn.close()
 
 
 # Hovedside
@@ -132,6 +157,51 @@ def bileier_home():
     return render_template("owner_home.html", name=navn, bestilling_lagret=bestilling_lagret)
 
 
+# Bileier: Se egne bestillinger
+@app.route("/mine-bestillinger")
+def mine_bestillinger():
+    navn = session.get("navn")
+    rolle = session.get("rolle")
+    if not navn or rolle != "bileier":
+        return redirect("/login")
+
+    try:
+        conn = get_conn_bestillinger()
+        cur = conn.cursor()
+        # Hent bestillinger for innlogget bileier (basert på kunde_navn)
+        cur.execute(
+            """
+            SELECT bestilling_id, biltype, pakke, pris, status, obs_notat
+            FROM bestillinger
+            WHERE kunde_navn = %s
+            ORDER BY opprettet DESC
+            """,
+            (navn,)
+        )
+        bestillinger = []
+        for row in cur.fetchall():
+            status_text = "Venter på svar"
+            if row[4] == "accepted":
+                status_text = "Godtatt"
+            elif row[4] == "rejected":
+                status_text = "Avslått"
+            bestillinger.append({
+                'id': row[0],
+                'biltype': row[1],
+                'tjeneste': row[2],
+                'pris': row[3],
+                'status': status_text,
+                'merknad': row[5]
+            })
+        cur.close()
+        conn.close()
+    except Exception as e:
+        print(f"Error loading mine bestillinger: {e}")
+        bestillinger = []
+
+    return render_template("mine_bestillinger.html", bestillinger=bestillinger, name=navn)
+
+
 @app.route("/bestilling", methods=["GET", "POST"])
 def bestilling():
     navn = session.get("navn")
@@ -219,15 +289,6 @@ def bestilling():
     form.tjeneste.choices = behandling_choices
 
     if form.validate_on_submit():
-        if not (time(8, 0) <= form.bestillingstid.data <= time(18, 0)):
-            form.bestillingstid.errors.append("Velg et klokkeslett mellom 08:00 og 18:00")
-            return render_template(
-                "bestilling.html",
-                form=form,
-                car_models=car_models,
-                model_type_map=model_type_map,
-                price_map=price_map,
-            )
 
         valgt_nokkel = form.tjeneste.data
         valgt_tjeneste = behandlinger.get(valgt_nokkel)
@@ -281,8 +342,8 @@ def bestilling():
            
             if {'navn', 'epost', 'merknad'}.issubset(existing_cols):
                 sql = (
-                    "INSERT INTO bestillinger (navn, epost, biltype, tjeneste, bestillingsdato, bestillingstid, pris, merknad)"
-                    " VALUES (%s, %s, %s, %s, %s, %s, %s, %s)"
+                    "INSERT INTO bestillinger (navn, epost, biltype, tjeneste, bestillingsdato, bestillingstid, pris, merknad, status)"
+                    " VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)"
                 )
                 params = (
                     navn,
@@ -293,6 +354,7 @@ def bestilling():
                     form.bestillingstid.data,
                     valgt_pris,
                     form.merknad.data,
+                    'pending'
                 )
                 cur.execute(sql, params)
                 conn.commit()
@@ -400,5 +462,131 @@ def logout():
     session.clear()
     return redirect("/")
 
+
+# Vaske-ekspert: Se bestillinger (kunder)
+@app.route("/kunder")
+def kunder():
+    navn = session.get("navn")
+    rolle = session.get("rolle")
+    if not navn or rolle != "vaskeekspert":
+        return redirect("/login")
+
+    try:
+        conn = get_conn_bestillinger()
+        cur = conn.cursor()
+        # Hent alle ventende bestillinger
+        cur.execute(
+            """
+            SELECT bestilling_id, kunde_navn, biltype, pakke, pris, obs_notat, status
+            FROM bestillinger
+            WHERE COALESCE(status, 'pending') = 'pending'
+            ORDER BY opprettet DESC
+            """
+        )
+        bestillinger = []
+        for row in cur.fetchall():
+            bestillinger.append({
+                'id': row[0],
+                'navn': row[1],
+                'biltype': row[2],
+                'tjeneste': row[3],
+                'pris': row[4],
+                'merknad': row[5]
+            })
+        cur.close()
+        conn.close()
+    except Exception as e:
+        print(f"Error loading bestillinger: {e}")
+        bestillinger = []
+
+    return render_template("kunder.html", bestillinger=bestillinger, name=navn)
+
+
+# Vaske-ekspert: Accept eller reject bestilling
+@app.route("/bestilling/<int:bestilling_id>/accept", methods=["POST"])
+def accept_bestilling(bestilling_id):
+    navn = session.get("navn")
+    rolle = session.get("rolle")
+    if not navn or rolle != "vaskeekspert":
+        return redirect("/login")
+
+    action = request.form.get("action")  # 'accept' or 'reject'
+    if action not in ("accept", "reject"):
+        return redirect("/kunder")
+
+    try:
+        conn = get_conn_bestillinger()
+        cur = conn.cursor()
+        if action == "accept":
+            cur.execute(
+                """
+                UPDATE bestillinger
+                SET status = 'accepted', ekspert = %s
+                WHERE bestilling_id = %s
+                  AND COALESCE(status, 'pending') = 'pending'
+                """,
+                (navn, bestilling_id)
+            )
+        else:  # reject
+            cur.execute(
+                """
+                UPDATE bestillinger
+                SET status = 'rejected', ekspert = NULL
+                WHERE bestilling_id = %s
+                  AND COALESCE(status, 'pending') = 'pending'
+                """,
+                (bestilling_id,)
+            )
+        conn.commit()
+        cur.close()
+        conn.close()
+    except Exception as e:
+        print(f"Error updating bestilling: {e}")
+
+    return redirect("/kunder")
+
+
+# Vaske-ekspert: Se planlagte oppdrag (accepted)
+@app.route("/planlagt-oppdrag")
+def planlagt_oppdrag():
+    navn = session.get("navn")
+    rolle = session.get("rolle")
+    if not navn or rolle != "vaskeekspert":
+        return redirect("/login")
+
+    try:
+        conn = get_conn_bestillinger()
+        cur = conn.cursor()
+        # Hent alle bestillinger med status 'accepted' for denne eksperten
+        cur.execute(
+            """
+            SELECT bestilling_id, kunde_navn, biltype, pakke, pris, obs_notat
+            FROM bestillinger
+            WHERE status = 'accepted' AND ekspert = %s
+            ORDER BY opprettet ASC
+            """,
+            (navn,)
+        )
+        bestillinger = []
+        for row in cur.fetchall():
+            bestillinger.append({
+                'id': row[0],
+                'navn': row[1],
+                'biltype': row[2],
+                'tjeneste': row[3],
+                'pris': row[4],
+                'merknad': row[5]
+            })
+        cur.close()
+        conn.close()
+    except Exception as e:
+        print(f"Error loading planlagte oppdrag: {e}")
+        bestillinger = []
+
+    return render_template("planlagt_oppdrag.html", bestillinger=bestillinger, name=navn)
+
+
 if __name__ == "__main__":
+    ensure_bestillinger_table()
+    ensure_bestillinger_columns()
     app.run()

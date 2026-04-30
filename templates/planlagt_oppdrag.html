@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+
+{% block content %}
+<h2>Planlagt oppdrag</h2>
+<p>Dine aksepterte bestillinger.</p>
+
+{% if bestillinger %}
+    <table>
+        <tr>
+            <th>Kunde</th>
+            <th>Biltype</th>
+            <th>Tjeneste</th>
+            <th>Pris</th>
+            <th>Merknad</th>
+        </tr>
+        {% for best in bestillinger %}
+        <tr>
+            <td>{{ best.navn }}</td>
+            <td>{{ best.biltype }}</td>
+            <td>{{ best.tjeneste }}</td>
+            <td>{{ best.pris }} kr</td>
+            <td>{{ best.merknad }}</td>
+        </tr>
+        {% endfor %}
+    </table>
+{% else %}
+    <p>Ingen planlagte oppdrag.</p>
+{% endif %}
+
+<p><a href="{{ url_for('vaskeekspert_home') }}">Tilbake til hjem</a></p>
+{% endblock %}
